@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "HelloReactNativeApp",
-    "slug": "HelloReactNativeApp",
+    "name": "SafeQuake",
+    "slug": "safequake",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
