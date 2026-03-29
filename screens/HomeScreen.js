@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { earthquakeService } from '../services/earthquakeService';
 
-export const HomeScreen = () => {
+export const HomeScreen = ({ onNavigate }) => {
   const [latestEarthquake, setLatestEarthquake] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -106,7 +106,10 @@ export const HomeScreen = () => {
       </View>
 
       {/* View Map Button */}
-      <TouchableOpacity style={styles.mapButton}>
+      <TouchableOpacity 
+        style={styles.mapButton}
+        onPress={() => onNavigate('Map')}
+      >
         <Text style={styles.mapButtonText}>Haritayı & Hastaneleri Görüntüle</Text>
       </TouchableOpacity>
     </ScrollView>

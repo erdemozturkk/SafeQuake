@@ -13,7 +13,7 @@ export default function App() {
   const renderScreen = () => {
     switch (activeTab) {
       case 'Home':
-        return <HomeScreen />;
+        return <HomeScreen onNavigate={setActiveTab} />;
       case 'Map':
         return <MapScreen />;
       case 'Alerts':
@@ -23,7 +23,7 @@ export default function App() {
       case 'Guide':
         return <GuideScreen />;
       default:
-        return <HomeScreen />;
+        return <HomeScreen onNavigate={setActiveTab} />;
     }
   };
 

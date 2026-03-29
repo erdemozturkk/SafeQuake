@@ -45,6 +45,7 @@ const parseEarthquakeData = (earthquakesArray) => {
         longitude: longitude,
         depth: parseFloat(item.depth) || 0,
         time: item.date_time || new Date().toISOString(),
+        datetime: item.date_time ? new Date(item.date_time).toLocaleString('tr-TR') : new Date().toLocaleString('tr-TR'),
         date: new Date(item.date_time || Date.now()).toLocaleDateString('tr-TR'),
         timestamp: item.created_at || Math.floor(Date.now() / 1000),
         provider: item.provider || 'kandilli',
