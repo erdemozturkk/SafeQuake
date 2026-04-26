@@ -16,14 +16,11 @@ router.get('/', authenticate, async (req, res) => {
       SELECT
         c.id,
         c.user_id,
-        COALESCE(u.id, TRY_CONVERT(INT, c.name), TRY_CONVERT(INT, c.phone)) AS related_user_id,
-        COALESCE(u.name, c.name) AS name,
-        COALESCE(NULLIF(u.phone, ''), c.phone) AS phone,
+        c.related_user_id,
+        c.name,
+        c.phone,
         c.created_at
       FROM EmergencyContacts c
-      LEFT JOIN Users u
-        ON u.id = TRY_CONVERT(INT, c.name)
-        OR u.id = TRY_CONVERT(INT, c.phone)
       WHERE c.user_id = @user_id
       ORDER BY c.created_at DESC
     `);

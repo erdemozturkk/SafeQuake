@@ -2,13 +2,19 @@ import { StyleSheet, View, ActivityIndicator, TouchableOpacity, Text, Alert } fr
 import { useEffect, useState } from 'react';
 import { WebView } from 'react-native-webview';
 import { earthquakeService } from '../services/earthquakeService';
+import { osmService } from '../services/osmService';
 import API_BASE_URL from '../config';
 
-export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation, onBackFromContactLocation }) => {
+export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation, onBackFromContactLocation, route }) => {
   const [earthquakes, setEarthquakes] = useState([]);
+  const [hospitals, setHospitals] = useState([]);
+  const [assemblyPoints, setAssemblyPoints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [htmlContent, setHtmlContent] = useState('');
   const [contactLocations, setContactLocations] = useState({ myLocation: null, contactLocation: null });
+
+  // Route'tan showOSM parametresini al
+  const showOSM = route?.params?.showOSM ?? false;
 
   const getTimeAgo = (dateString) => {
     try {
@@ -28,12 +34,14 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
   useEffect(() => {
     if (contactIdForLocation) {
       fetchContactLocations();
+    } else if (showOSM) {
+      fetchOSMLocations();
     } else {
       fetchEarthquakes();
       const interval = setInterval(fetchEarthquakes, 30000);
       return () => clearInterval(interval);
     }
-  }, [contactIdForLocation]);
+  }, [contactIdForLocation, showOSM]);
 
   const fetchContactLocations = async () => {
     try {
@@ -43,25 +51,32 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
       const myLocRes = await fetch(`${API_BASE_URL}/locations`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      const myLoc = myLocRes.ok ? await myLocRes.json() : null;
+      const myLocData = myLocRes.ok ? await myLocRes.json() : null;
+      const myLoc = myLocData?.latitude ? myLocData : null;
 
-      console.log('My location:', myLoc);
+      console.log('📍 My location response:', myLocData);
 
       // Get contact's location by user ID
       const contactRes = await fetch(`${API_BASE_URL}/locations/${contactIdForLocation}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      const contactLoc = contactRes.ok ? await contactRes.json() : null;
+      const contactLocData = contactRes.ok ? await contactRes.json() : null;
+      const contactLoc = contactLocData?.latitude ? contactLocData : null;
 
-      console.log('Contact location:', contactLoc);
+      console.log('📍 Contact location response:', contactLocData);
 
       setContactLocations({ myLocation: myLoc, contactLocation: contactLoc });
       
-      if (myLoc || contactLoc) {
+      if ((myLoc && myLoc.latitude && myLoc.longitude) || (contactLoc && contactLoc.latitude && contactLoc.longitude)) {
         generateContactMapHTML(myLoc, contactLoc);
       } else {
-        Alert.alert('Hata', 'Konum bilgisi bulunamadı');
-        setLoading(false);
+        Alert.alert(
+          'ℹ️ Konum Bilgisi',
+          'Sizin veya kontağın konum bilgisi henüz kaydedilmedi. Harita yükleniyor...',
+          [{ text: 'Tamam' }]
+        );
+        // Boş harita göster
+        generateContactMapHTML(null, null);
       }
     } catch (error) {
       console.log('Error fetching locations:', error);
@@ -72,7 +87,7 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
 
   const generateContactMapHTML = (myLocation, contactLocation) => {
     let markers = '';
-    let centerLat = 39.2;
+    let centerLat = 39.2;  // Turkey center
     let centerLng = 35.2;
 
     if (myLocation && myLocation.latitude && myLocation.longitude) {
@@ -88,6 +103,8 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
           })
         }).bindPopup('<b style="font-size: 14px">Buradasınız</b><br/><span style="font-size: 12px">${timeAgo}</span><br/><span style="font-size: 11px">Lon: ${lng.toFixed(4)}<br/>Lat: ${lat.toFixed(4)}</span>').addTo(map);
       `;
+      centerLat = lat;
+      centerLng = lng;
     }
 
     if (contactLocation && contactLocation.latitude && contactLocation.longitude) {
@@ -103,6 +120,19 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
             iconAnchor: [16, 16],
           })
         }).bindPopup('<b style="font-size: 14px">${contactName}</b><br/><span style="font-size: 12px">${timeAgo}</span><br/><span style="font-size: 11px">Lon: ${lng.toFixed(4)}<br/>Lat: ${lat.toFixed(4)}</span>').addTo(map).openPopup();
+      `;
+      centerLat = lat;
+      centerLng = lng;
+    }
+
+    // İçeriğe bildirim ekle - konum yoksa
+    let infoBox = '';
+    if ((!myLocation || !myLocation.latitude) && (!contactLocation || !contactLocation.latitude)) {
+      infoBox = `
+        <div style="position: absolute; top: 10px; left: 50px; background: #fff; padding: 12px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000; max-width: 250px; font-size: 12px;">
+          <b>ℹ️ Konum Verisi Yok</b><br/>
+          <span style="color: #666;">Henüz konum bilgisi kaydedilmedi. Uygulama açık oldukça konumunuz güncellenecektir.</span>
+        </div>
       `;
     }
 
@@ -121,6 +151,7 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
       </head>
       <body>
         <div id="map"></div>
+        ${infoBox}
         <script>
           const positions = [];
           ${myLocation && myLocation.latitude && myLocation.longitude ? `positions.push([${parseFloat(myLocation.latitude)}, ${parseFloat(myLocation.longitude)}]);` : ''}
@@ -252,6 +283,136 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
     setHtmlContent(html);
   };
 
+  const fetchOSMLocations = async () => {
+    try {
+      setLoading(true);
+      console.log('🗺️ Starting OSM locations fetch...');
+      const data = await osmService.getOSMLocations();
+      console.log('📊 OSM Data received:', { hospitals: data.hospitals?.length || 0, assemblyPoints: data.assemblyPoints?.length || 0 });
+      setHospitals(data.hospitals);
+      setAssemblyPoints(data.assemblyPoints);
+      if (data.hospitals.length > 0 || data.assemblyPoints.length > 0) {
+        console.log('🎨 Generating OSM map HTML...');
+        generateOSMMapHTML(data.hospitals, data.assemblyPoints);
+      } else {
+        console.warn('⚠️ No hospitals or assembly points found');
+        Alert.alert('Info', 'Hastane veya toplanma noktası bulunamadı');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching OSM locations:', error);
+      Alert.alert('Hata', 'Veri yüklenirken hata oluştu: ' + error.message);
+    } finally {
+      setLoading(false);
+      console.log('✅ OSM Loading complete');
+    }
+  };
+
+  const generateOSMMapHTML = (hospitalData, assemblyPointData) => {
+    // Tüm markerları göster (limit yok)
+    console.log(`📍 Rendering: ${hospitalData.length} hospitals, ${assemblyPointData.length} assembly points`);
+
+    // Hastane markerlarını oluştur
+    const hospitalMarkers = hospitalData.map((hospital) => {
+      const lat = parseFloat(hospital.latitude);
+      const lng = parseFloat(hospital.longitude);
+      const name = hospital.name.replace(/'/g, "\\'");
+      const phone = hospital.phone ? `<br/>Tel: ${hospital.phone}` : '';
+      
+      return `
+        L.marker([${lat}, ${lng}], {
+          icon: L.icon({
+            iconUrl: 'data:image/svg+xml;charset=utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"%3E%3Ccircle cx="16" cy="16" r="10" fill="%23EF4444"/%3E%3Ctext x="16" y="20" text-anchor="middle" font-size="16" fill="white"%3E%2B%3C/text%3E%3C/svg%3E',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          })
+        }).bindPopup('<b style="font-size: 14px">🏥 ${name}</b><br/><span style="font-size: 12px">Hastane${phone}</span>').addTo(map);
+      `;
+    }).join('\n');
+
+    // Toplanma noktası markerlarını oluştur (hepsi)
+    const assemblyMarkers = assemblyPointData.map((point) => {
+      const lat = parseFloat(point.latitude);
+      const lng = parseFloat(point.longitude);
+      const name = point.name.replace(/'/g, "\\'");
+      
+      return `
+        L.marker([${lat}, ${lng}], {
+          icon: L.icon({
+            iconUrl: 'data:image/svg+xml;charset=utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"%3E%3Ccircle cx="12" cy="12" r="8" fill="%23F59E0B"/%3E%3C/svg%3E',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          })
+        }).bindPopup('<b style="font-size: 12px">🚨 ${name}</b>').addTo(map);
+      `;
+    }).join('\n');
+
+    const markers = hospitalMarkers + '\n' + assemblyMarkers;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+        <style>
+          body { margin: 0; padding: 0; }
+          #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+          .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            font-size: 12px;
+          }
+          .legend-item { display: flex; align-items: center; margin: 5px 0; }
+          .legend-dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script>
+          try {
+            const map = L.map('map').setView([39.2, 35.2], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '© OpenStreetMap contributors',
+              maxZoom: 19
+            }).addTo(map);
+            
+            ${markers}
+            
+            const legend = L.control({ position: 'bottomright' });
+            legend.onAdd = function (map) {
+              const div = L.DomUtil.create('div', 'legend');
+              div.innerHTML = \`
+                <div class="legend-item">
+                  <div class="legend-dot" style="background-color: #EF4444;"></div>
+                  Hastaneler (${hospitalData.length})
+                </div>
+                <div class="legend-item">
+                  <div class="legend-dot" style="background-color: #F59E0B;"></div>
+                  Toplanma (${assemblyPointData.length})
+                </div>
+                <div style="margin-top: 8px; border-top: 1px solid #ddd; padding-top: 8px; font-size: 11px;">
+                  Toplam: ${hospitalData.length + assemblyPointData.length}
+                </div>
+              \`;
+              return div;
+            };
+            legend.addTo(map);
+            console.log('✅ Map rendered with all markers');
+          } catch(e) {
+            console.error('Map Error:', e.message);
+          }
+        </script>
+      </body>
+      </html>
+    `;
+    console.log('📄 OSM HTML set, length:', html.length);
+    setHtmlContent(html);
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -262,10 +423,10 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
 
   return (
     <View style={styles.container}>
-      {contactIdForLocation && (
+      {(contactIdForLocation || showOSM) && (
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={onBackFromContactLocation}
+          onPress={contactIdForLocation ? onBackFromContactLocation : () => {}}
         >
           <Text style={styles.backButtonText}>← Geri</Text>
         </TouchableOpacity>
@@ -274,7 +435,18 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
         source={{ html: htmlContent }}
         style={styles.webview}
         scalesPageToFit
-        javaScriptEnabled
+        javaScriptEnabled={true}
+        startInLoadingState={true}
+        onError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.error('❌ WebView Error:', nativeEvent);
+        }}
+        onLoadEnd={() => {
+          console.log('✅ WebView loaded successfully');
+        }}
+        onMessage={(event) => {
+          console.log('📨 WebView message:', event.nativeEvent.data);
+        }}
       />
     </View>
   );

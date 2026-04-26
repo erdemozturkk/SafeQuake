@@ -1,18 +1,28 @@
- import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+ import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
 import { useEffect, useState } from 'react';
 import { earthquakeService } from '../services/earthquakeService';
+import { osmService } from '../services/osmService';
+import API_BASE_URL from '../config';
 
-export const HomeScreen = ({ onNavigate }) => {
+export const HomeScreen = ({ token, onNavigate }) => {
   const [latestEarthquake, setLatestEarthquake] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [sendingSafeNotif, setSendingSafeNotif] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     fetchEarthquakeData();
+    fetchNotifications();
     // Her 30 saniyede veriyi güncelle
-    const interval = setInterval(fetchEarthquakeData, 30000);
+    const interval = setInterval(() => {
+      fetchEarthquakeData();
+      fetchNotifications();
+    }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
   const fetchEarthquakeData = async () => {
     setLoading(true);
@@ -24,6 +34,25 @@ export const HomeScreen = ({ onNavigate }) => {
       setErrorMsg('Veri alınamadı');
     }
     setLoading(false);
+  };
+
+  const fetchNotifications = async () => {
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/notifications`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setNotifications(data);
+        const unread = data.filter(n => n.status === 'unread').length;
+        setUnreadCount(unread);
+      }
+    } catch (error) {
+      console.log('Fetch notifications error:', error.message);
+    }
   };
 
   const getTimeAgo = (timeString) => {
@@ -44,13 +73,102 @@ export const HomeScreen = ({ onNavigate }) => {
     }
   };
 
+  const handleSendSafeNotification = async () => {
+    if (!token) {
+      Alert.alert('Hata', 'Lütfen önce giriş yapınız');
+      return;
+    }
+
+    setSendingSafeNotif(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/notifications/send-safe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        Alert.alert(
+          '✓ Başarılı',
+          `${data.sent_to_count} kontağa bildirim gönderildi`,
+          [{ text: 'Tamam' }]
+        );
+        fetchNotifications();
+      } else {
+        Alert.alert('Hata', data.error || data.message || 'Bildirim gönderilemedi');
+      }
+    } catch (error) {
+      Alert.alert('Hata', 'Sunucu bağlantısı başarısız: ' + error.message);
+    } finally {
+      setSendingSafeNotif(false);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        fetchNotifications();
+      }
+    } catch (error) {
+      console.log('Mark as read error:', error);
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId) => {
+    try {
+      await fetch(`${API_BASE_URL}/notifications/${notificationId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      fetchNotifications();
+    } catch (error) {
+      console.log('Delete notification error:', error);
+    }
+  };
+
+  const handleShowEarthquakes = () => {
+    onNavigate('Map', { showOSM: false });
+  };
+
+  const handleShowHospitals = () => {
+    onNavigate('Map', { showOSM: true });
+  };
+
   return (
-    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.appTitle}>SafeQuake</Text>
-        <Text style={styles.subtitle}>Gerçek zamanlı deprem izleme</Text>
-      </View>
+    <>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.appTitle}>SafeQuake</Text>
+              <Text style={styles.subtitle}>Gerçek zamanlı deprem izleme</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.notificationButton}
+              onPress={() => setShowNotifications(true)}
+            >
+              <Text style={styles.notificationIcon}>🔔</Text>
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
 
       {/* Latest Alert Card */}
       <View style={styles.alertCard}>
@@ -77,12 +195,22 @@ export const HomeScreen = ({ onNavigate }) => {
       </View>
 
       {/* I Am Safe Button */}
-      <TouchableOpacity style={styles.safeButton}>
-        <Text style={styles.safeButtonIcon}>✓</Text>
-        <View style={styles.safeButtonText}>
-          <Text style={styles.safeTitle}>Güvendeyim</Text>
-          <Text style={styles.safeSubtitle}>Acil durum kişileriyle durumunuzu paylaşın</Text>
-        </View>
+      <TouchableOpacity 
+        style={[styles.safeButton, sendingSafeNotif && { opacity: 0.6 }]}
+        onPress={handleSendSafeNotification}
+        disabled={sendingSafeNotif}
+      >
+        {sendingSafeNotif ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <>
+            <Text style={styles.safeButtonIcon}>✓</Text>
+            <View style={styles.safeButtonText}>
+              <Text style={styles.safeTitle}>Güvendeyim</Text>
+              <Text style={styles.safeSubtitle}>Acil durum kişileriyle durumunuzu paylaşın</Text>
+            </View>
+          </>
+        )}
       </TouchableOpacity>
 
       {/* Network Status */}
@@ -108,11 +236,77 @@ export const HomeScreen = ({ onNavigate }) => {
       {/* View Map Button */}
       <TouchableOpacity 
         style={styles.mapButton}
-        onPress={() => onNavigate('Map')}
+        onPress={handleShowEarthquakes}
       >
-        <Text style={styles.mapButtonText}>Haritayı & Hastaneleri Görüntüle</Text>
+        <Text style={styles.mapButtonText}>📍 Depremleri Haritada Görüntüle</Text>
       </TouchableOpacity>
-    </ScrollView>
+
+      {/* Show Hospitals Button */}
+      <TouchableOpacity 
+        style={[styles.mapButton, styles.hospitalsButton]}
+        onPress={handleShowHospitals}
+      >
+        <Text style={styles.mapButtonText}>🏥 Hastaneleri & Toplanma Noktalarını Göster</Text>
+      </TouchableOpacity>
+      </ScrollView>
+
+      {/* Notifications Modal */}
+      <Modal
+        visible={showNotifications}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowNotifications(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Bildirimler</Text>
+              <TouchableOpacity onPress={() => setShowNotifications(false)}>
+                <Text style={styles.closeButton}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {notifications.length === 0 ? (
+              <View style={styles.emptyNotifications}>
+                <Text style={styles.emptyIcon}>🔔</Text>
+                <Text style={styles.emptyText}>Henüz bildirim yok</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={notifications}
+                renderItem={({ item }) => (
+                  <View style={[styles.notificationItem, item.status === 'unread' && styles.notificationItemUnread]}>
+                    <View style={styles.notificationItemContent}>
+                      <Text style={styles.notificationSenderName}>{item.sender_name}</Text>
+                      <Text style={styles.notificationMessage} numberOfLines={2}>{item.message}</Text>
+                      <Text style={styles.notificationTime}>
+                        {new Date(item.created_at).toLocaleTimeString('tr-TR')}
+                      </Text>
+                    </View>
+                    <View style={styles.notificationActions}>
+                      <TouchableOpacity 
+                        onPress={() => handleMarkAsRead(item.id)}
+                        style={styles.readButton}
+                      >
+                        <Text style={styles.readButtonText}>✓</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => handleDeleteNotification(item.id)}
+                        style={styles.deleteButton}
+                      >
+                        <Text style={styles.deleteButtonText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                keyExtractor={(item) => item.id.toString()}
+                contentContainerStyle={styles.notificationsList}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 };
 
@@ -126,6 +320,39 @@ const styles = StyleSheet.create({
   header: {
     marginTop: 16,
     marginBottom: 24,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  notificationButton: {
+    position: 'relative',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF3E0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationIcon: {
+    fontSize: 20,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF6B35',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   appTitle: {
     fontSize: 32,
@@ -275,10 +502,124 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginBottom: 12,
+  },
+  hospitalsButton: {
+    backgroundColor: '#EC4899',
   },
   mapButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    flex: 1,
+    backgroundColor: '#fff',
+    marginTop: 50,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 0,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  closeButton: {
+    fontSize: 24,
+    color: '#6B7280',
+  },
+  notificationsList: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  emptyNotifications: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  notificationItemUnread: {
+    backgroundColor: '#FFFBF0',
+    borderColor: '#FEE2E2',
+  },
+  notificationItemContent: {
+    flex: 1,
+    marginRight: 8,
+  },
+  notificationSenderName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  notificationMessage: {
+    fontSize: 13,
+    color: '#4B5563',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  notificationTime: {
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  notificationActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  readButton: {
+    backgroundColor: '#D1FAE5',
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  readButtonText: {
+    color: '#10B981',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  deleteButton: {
+    backgroundColor: '#FEE2E2',
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

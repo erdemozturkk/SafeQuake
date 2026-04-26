@@ -22,6 +22,8 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
   const [activeTab, setActiveTab] = useState('contacts');
   const [contacts, setContacts] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [sentRequests, setSentRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -72,8 +74,10 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
   useEffect(() => {
     if (activeTab === 'contacts') {
       fetchContacts();
-    } else {
+    } else if (activeTab === 'requests') {
       fetchRequests();
+    } else if (activeTab === 'users') {
+      fetchUsers();
     }
   }, [token, activeTab]);
 
@@ -102,6 +106,40 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
       });
       Alert.alert('Başarılı', status === 'accepted' ? 'Kabul edildi' : 'Reddedildi');
       fetchRequests();
+    } catch (error) {
+      Alert.alert('Hata', error.message);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE_URL}/friend-requests/users`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        setUsers(await response.json());
+      }
+    } catch (error) {
+      Alert.alert('Hata', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendRequest = async (userId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/friend-requests/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ receiver_id: userId }),
+      });
+      if (response.ok) {
+        Alert.alert('Başarılı', 'İstek gönderildi');
+        setSentRequests([...sentRequests, userId]);
+      } else {
+        Alert.alert('Hata', 'İstek gönderilemedi');
+      }
     } catch (error) {
       Alert.alert('Hata', error.message);
     }
@@ -263,6 +301,22 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
     </View>
   );
 
+  const renderUserCard = ({ item }) => (
+    <View style={styles.contactCard}>
+      <View style={styles.contactInfo}>
+        <Text style={styles.contactName}>{item.name}</Text>
+        <Text style={styles.contactPhone}>{item.email || item.phone}</Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.editButton, sentRequests.includes(item.id) && styles.btnDisabled]}
+        onPress={() => handleSendRequest(item.id)}
+        disabled={sentRequests.includes(item.id)}
+      >
+        <Text style={styles.actionText}>{sentRequests.includes(item.id) ? '✔' : '+'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -303,6 +357,12 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
         >
           <Text style={[styles.tabButtonText, activeTab === 'requests' && styles.tabButtonTextActive]}>Arkadaş İstekleri</Text>
         </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tabButton, activeTab === 'users' && styles.tabButtonActive]} 
+          onPress={() => setActiveTab('users')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'users' && styles.tabButtonTextActive]}>Kullanıcılar</Text>
+        </TouchableOpacity>
       </View>
 
       {activeTab === 'contacts' ? (
@@ -330,7 +390,7 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
             />
           )}
         </View>
-      ) : (
+      ) : activeTab === 'requests' ? (
         <View style={styles.tabContent}>
           {requests.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -340,6 +400,21 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
             <FlatList
               data={requests}
               renderItem={renderRequestCard}
+              keyExtractor={(item) => item.id.toString()}
+              contentContainerStyle={styles.listContent}
+            />
+          )}
+        </View>
+      ) : (
+        <View style={styles.tabContent}>
+          {users.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Kullanıcı bulunamadı</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={users}
+              renderItem={renderUserCard}
               keyExtractor={(item) => item.id.toString()}
               contentContainerStyle={styles.listContent}
             />
@@ -514,6 +589,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: '#FEE2E2',
     borderRadius: 6,
+  },
+  btnDisabled: {
+    backgroundColor: '#D1D5DB',
   },
   actionText: {
     fontSize: 16,

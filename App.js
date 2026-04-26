@@ -21,6 +21,7 @@ export default function App() {
   const [authScreen, setAuthScreen] = useState('login');
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [selectedContactName, setSelectedContactName] = useState(null);
+  const [mapParams, setMapParams] = useState({});
 
   useEffect(() => {
     checkStoredToken();
@@ -37,33 +38,59 @@ export default function App() {
         // Request location permission
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          console.log('Location permission denied (silent)');
+          console.log('Location permission denied');
           return;
         }
 
-        // Get location immediately and then every 10 seconds
+        // Get location immediately and then every 20 seconds
         const fetchAndSendLocation = async () => {
           try {
-            const location = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-              timeInterval: 1000,
-              distanceInterval: 0,
-            });
+            // Try with best accuracy first, then fallback
+            let location;
+            try {
+              location = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.BestForNavigation,
+                timeInterval: 2000,
+                distanceInterval: 0,
+              });
+            } catch (e1) {
+              // Fallback to balanced accuracy
+              try {
+                location = await Location.getCurrentPositionAsync({
+                  accuracy: Location.Accuracy.Balanced,
+                  timeInterval: 2000,
+                  distanceInterval: 0,
+                });
+              } catch (e2) {
+                // Final fallback to low accuracy
+                location = await Location.getCurrentPositionAsync({
+                  accuracy: Location.Accuracy.Low,
+                  timeInterval: 2000,
+                  distanceInterval: 0,
+                });
+              }
+            }
 
             const { latitude, longitude } = location.coords;
+            console.log('✅ Location updated:', { latitude, longitude });
             await sendLocationToBackend(latitude, longitude, token);
           } catch (error) {
-            console.log('Location fetch error (silent):', error.message);
+            // Silent fail - Google Play Services may not be available
+            if (error.message?.includes('Google Play')) {
+              console.log('⚠️ Location Services: Google Play Services unavailable');
+            } else {
+              console.log('⚠️ Location update failed:', error.message);
+            }
           }
         };
 
         // Send location immediately
         await fetchAndSendLocation();
 
-        // Then every 10 seconds
-        locationIntervalId = setInterval(fetchAndSendLocation, 10000);
+        // Then every 20 seconds (regardless of success/failure)
+        locationIntervalId = setInterval(fetchAndSendLocation, 20000);
       } catch (error) {
-        console.log('Location tracking setup error (silent):', error.message);
+        console.log('Location setup error:', error.message);
       }
     };
 
@@ -164,9 +191,9 @@ export default function App() {
   const renderScreen = () => {
     switch (activeTab) {
       case 'Home':
-        return <HomeScreen onNavigate={setActiveTab} token={token} />;
+        return <HomeScreen onNavigate={handleNavigate} token={token} />;
       case 'Map':
-        return <MapScreen token={token} contactIdForLocation={selectedContactId} contactNameForLocation={selectedContactName} onBackFromContactLocation={() => { setSelectedContactId(null); setSelectedContactName(null); setActiveTab('Contacts'); }} />;
+        return <MapScreen token={token} route={{ params: mapParams }} contactIdForLocation={selectedContactId} contactNameForLocation={selectedContactName} onBackFromContactLocation={() => { setSelectedContactId(null); setSelectedContactName(null); setActiveTab('Contacts'); }} />;
       case 'Alerts':
         return <AlertsScreen token={token} />;
       case 'Contacts':
@@ -174,8 +201,15 @@ export default function App() {
       case 'Guide':
         return <GuideScreen token={token} />;
       default:
-        return <HomeScreen onNavigate={setActiveTab} token={token} />;
+        return <HomeScreen onNavigate={handleNavigate} token={token} />;
     }
+  };
+
+  const handleNavigate = (screenName, params = {}) => {
+    if (screenName === 'Map') {
+      setMapParams(params);
+    }
+    setActiveTab(screenName);
   };
 
   const tabs = [

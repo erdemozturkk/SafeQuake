@@ -155,29 +155,31 @@ router.put('/:id', authenticate, async (req, res) => {
     if (status === 'accepted') {
       const addContact1 = pool.request();
       addContact1.input('user_id', sql.Int, sender_id);
+      addContact1.input('receiver_id', sql.Int, receiver_id);
       addContact1.input('name', sql.NVarChar, receiverUser.name || 'Contact');
       addContact1.input('phone', sql.NVarChar, receiverUser.phone || '');
 
       await addContact1.query(`
-        INSERT INTO EmergencyContacts (user_id, name, phone)
-        SELECT @user_id, @name, @phone
+        INSERT INTO EmergencyContacts (user_id, name, phone, related_user_id)
+        SELECT @user_id, @name, @phone, @receiver_id
         WHERE NOT EXISTS (
           SELECT 1 FROM EmergencyContacts
-          WHERE user_id = @user_id AND name = @name AND phone = @phone
+          WHERE user_id = @user_id AND related_user_id = @receiver_id
         )
       `);
 
       const addContact2 = pool.request();
       addContact2.input('user_id', sql.Int, receiver_id);
+      addContact2.input('sender_id', sql.Int, sender_id);
       addContact2.input('name', sql.NVarChar, senderUser.name || 'Contact');
       addContact2.input('phone', sql.NVarChar, senderUser.phone || '');
 
       await addContact2.query(`
-        INSERT INTO EmergencyContacts (user_id, name, phone)
-        SELECT @user_id, @name, @phone
+        INSERT INTO EmergencyContacts (user_id, name, phone, related_user_id)
+        SELECT @user_id, @name, @phone, @sender_id
         WHERE NOT EXISTS (
           SELECT 1 FROM EmergencyContacts
-          WHERE user_id = @user_id AND name = @name AND phone = @phone
+          WHERE user_id = @user_id AND related_user_id = @sender_id
         )
       `);
     }
