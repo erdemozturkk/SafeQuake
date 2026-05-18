@@ -1,8 +1,13 @@
  import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
 import { useEffect, useState } from 'react';
+import * as Network from 'expo-network';
+import * as SMS from 'expo-sms';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { earthquakeService } from '../services/earthquakeService';
 import { osmService } from '../services/osmService';
 import API_BASE_URL from '../config';
+
+const CONTACTS_CACHE_KEY = 'safequake_contacts_cache';
 
 export const HomeScreen = ({ token, onNavigate }) => {
   const [latestEarthquake, setLatestEarthquake] = useState(null);
@@ -16,6 +21,9 @@ export const HomeScreen = ({ token, onNavigate }) => {
   useEffect(() => {
     fetchEarthquakeData();
     fetchNotifications();
+    // Kontakları önden cache'e kaydet (SMS için)
+    preloadContacts();
+    
     // Her 30 saniyede veriyi güncelle
     const interval = setInterval(() => {
       fetchEarthquakeData();
@@ -23,6 +31,30 @@ export const HomeScreen = ({ token, onNavigate }) => {
     }, 30000);
     return () => clearInterval(interval);
   }, [token]);
+
+  const preloadContacts = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(`${API_BASE_URL}/contacts`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const contacts = await response.json();
+        await saveContactsToCache(contacts);
+        console.log('✅ Contacts preloaded to cache');
+      } else {
+        console.log('⚠️ Preload response not ok:', response.status);
+      }
+    } catch (error) {
+      console.log('ℹ️ Could not preload contacts (will use cache):', error.message);
+    }
+  };
 
   const fetchEarthquakeData = async () => {
     setLoading(true);
@@ -81,28 +113,175 @@ export const HomeScreen = ({ token, onNavigate }) => {
 
     setSendingSafeNotif(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/notifications/send-safe`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // İnternet durumunu kontrol et
+      const networkState = await Network.getNetworkStateAsync();
+      const isConnected = networkState.isConnected && networkState.isInternetReachable;
 
-      const data = await response.json();
+      if (isConnected) {
+        // 1. DURUM: İnternet var - Normal API isteği
+        const response = await fetch(`${API_BASE_URL}/notifications/send-safe`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
 
-      if (response.ok) {
-        Alert.alert(
-          '✓ Başarılı',
-          `${data.sent_to_count} kontağa bildirim gönderildi`,
-          [{ text: 'Tamam' }]
-        );
-        fetchNotifications();
+        const data = await response.json();
+
+        if (response.ok) {
+          Alert.alert(
+            '✓ Başarılı',
+            `${data.sent_to_count} kontağa bildirim gönderildi`,
+            [{ text: 'Tamam' }]
+          );
+          fetchNotifications();
+        } else {
+          Alert.alert('Hata', data.error || data.message || 'Bildirim gönderilemedi');
+        }
       } else {
-        Alert.alert('Hata', data.error || data.message || 'Bildirim gönderilemedi');
+        // 2. DURUM: İnternet yok - SMS'e yönlendir
+        Alert.alert(
+          'İnternet Bağlantısı Yok',
+          'Bildirim SMS olarak gönderilecek. Devam etmek istiyor musunuz?',
+          [
+            {
+              text: 'İptal',
+              onPress: () => setSendingSafeNotif(false),
+              style: 'cancel',
+            },
+            {
+              text: 'Gönder',
+              onPress: async () => {
+                await handleSendSafeViaSMS();
+              },
+            },
+          ]
+        );
       }
     } catch (error) {
-      Alert.alert('Hata', 'Sunucu bağlantısı başarısız: ' + error.message);
+      Alert.alert('Hata', 'İslem başarısız: ' + error.message);
+      setSendingSafeNotif(false);
+    }
+  };
+
+  const saveContactsToCache = async (data) => {
+    try {
+      await AsyncStorage.setItem(CONTACTS_CACHE_KEY, JSON.stringify(data));
+      console.log('💾 Saved to cache:', data.length, 'contacts');
+    } catch (error) {
+      console.log('❌ Cache save error:', error.message);
+    }
+  };
+
+  const loadContactsFromCache = async () => {
+    try {
+      const cached = await AsyncStorage.getItem(CONTACTS_CACHE_KEY);
+      if (!cached) {
+        console.log('⚠️ Cache is empty');
+        return [];
+      }
+      const parsed = JSON.parse(cached);
+      const result = Array.isArray(parsed) ? parsed : [];
+      console.log('📦 Loaded from cache:', result.length, 'contacts');
+      return result;
+    } catch (error) {
+      console.log('❌ Cache read error:', error.message);
+      return [];
+    }
+  };
+
+  const handleSendSafeViaSMS = async () => {
+    try {
+      // Önce network state kontrol et
+      const networkState = await Network.getNetworkStateAsync();
+      const isNetworkAvailable = networkState.isConnected;
+      
+      console.log('📡 Network state:', { 
+        isConnected: networkState.isConnected, 
+        isInternetReachable: networkState.isInternetReachable 
+      });
+
+      let contacts = [];
+
+      if (isNetworkAvailable) {
+        // İnternet varsa API'den kontakları al
+        try {
+          console.log('🔄 Fetching contacts from API...');
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
+
+          const response = await fetch(`${API_BASE_URL}/contacts`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            contacts = await response.json();
+            console.log('✅ Contacts fetched from API:', contacts.length);
+            await saveContactsToCache(contacts);
+          } else {
+            console.log('❌ API error:', response.status);
+            contacts = await loadContactsFromCache();
+          }
+        } catch (fetchError) {
+          console.log('❌ Network error:', fetchError.message);
+          contacts = await loadContactsFromCache();
+        }
+      } else {
+        // İnternet yok, cache'den al
+        console.log('📦 Using cached contacts (offline)');
+        contacts = await loadContactsFromCache();
+      }
+
+      if (!contacts || contacts.length === 0) {
+        Alert.alert('Uyarı', 'Bilgilendirilecek kontağınız bulunmuyor');
+        setSendingSafeNotif(false);
+        return;
+      }
+
+      // SMS numaralarını topla (phone veya phone_number'ı kontrol et)
+      const phoneNumbers = contacts
+        .map(c => c.phone || c.phone_number)
+        .filter(phone => phone && phone.trim() !== '');
+
+      console.log('📱 Phone numbers:', phoneNumbers);
+
+      if (phoneNumbers.length === 0) {
+        Alert.alert('Uyarı', 'Kontaklarınızın telefon numarası bulunamadı');
+        setSendingSafeNotif(false);
+        return;
+      }
+
+      // SMS servisi kullanılabilir mi kontrol et
+      const isSMSAvailable = await SMS.isAvailableAsync();
+
+      if (!isSMSAvailable) {
+        Alert.alert('Hata', 'SMS gönderimi bu cihazda desteklenmiyor');
+        setSendingSafeNotif(false);
+        return;
+      }
+
+      // SMS gönder
+      const message = 'Ben güvendeyim, merak etmeyin. (SafeQuake - Otomatik bildirim)';
+      
+      console.log('📤 Sending SMS...');
+      await SMS.sendSMSAsync(
+        phoneNumbers,
+        message
+      );
+
+      Alert.alert(
+        '✓ Başarılı',
+        `${phoneNumbers.length} kontağa SMS gönderildi`,
+        [{ text: 'Tamam' }]
+      );
+
+    } catch (error) {
+      console.error('❌ SMS Error:', error);
+      Alert.alert('Hata', 'SMS gönderilemedi: ' + error.message);
     } finally {
       setSendingSafeNotif(false);
     }
