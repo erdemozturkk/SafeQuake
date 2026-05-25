@@ -3,174 +3,501 @@ import {
   StyleSheet,
   Text,
   View,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
-  Alert,
-  ActivityIndicator,
+  Modal,
+  FlatList,
 } from 'react-native';
-import API_BASE_URL from '../config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const UsersListTab = ({ token }) => {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [sentRequests, setSentRequests] = useState([]);
+const CHECKLIST_KEY = 'safequake_backpack_checklist';
+
+const checklistItems = [
+  { id: 1, label: '💧 Su (en az 1 litre kişi başına)' },
+  { id: 2, label: '🍞 Gıda (konserve, protein barı, kurutulmuş meyve)' },
+  { id: 3, label: '🩹 Birinci yardım malzemeleri' },
+  { id: 4, label: '💊 İlaçlar (reçeteli ve genel)' },
+  { id: 5, label: '📄 Kimlik belgeleri (pasaport, sertifika)' },
+  { id: 6, label: '🕯️ Çakmak/Mum' },
+  { id: 7, label: '🔦 Fener ve piller' },
+  { id: 8, label: '🧤 Ağır eldiven ve eldiven' },
+  { id: 9, label: '😷 Maske (toz ve gaz maskesi)' },
+  { id: 10, label: '📞 İletişim numaraları listesi' },
+  { id: 11, label: '💰 Para (nakit)' },
+  { id: 12, label: '🔨 Bıçak/Kesici aletler' },
+  { id: 13, label: '🧲 Bağlama malzemeleri (bant, halat)' },
+];
+
+export const GuideScreen = () => {
+  const [activeTab, setActiveTab] = useState('before');
+  const [checklistVisible, setChecklistVisible] = useState(false);
+  const [checklistItems_state, setChecklistItemsState] = useState(
+    checklistItems.map(item => ({ ...item, checked: false }))
+  );
 
   useEffect(() => {
-    fetchUsers();
-  }, [token]);
+    loadChecklist();
+  }, []);
 
-  const fetchUsers = async () => {
+  const loadChecklist = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/friend-requests/users`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        setUsers(await response.json());
+      const saved = await AsyncStorage.getItem(CHECKLIST_KEY);
+      if (saved) {
+        setChecklistItemsState(JSON.parse(saved));
       }
     } catch (error) {
-      Alert.alert('Hata', error.message);
-    } finally {
-      setLoading(false);
+      console.log('Checklist load error:', error);
     }
   };
 
-  const handleSendRequest = async (userId) => {
+  const saveChecklist = async (items) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/friend-requests/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ receiver_id: userId }),
-      });
-      if (response.ok) {
-        Alert.alert('Başarılı', 'İstek gönderildi');
-        setSentRequests([...sentRequests, userId]);
-      }
+      await AsyncStorage.setItem(CHECKLIST_KEY, JSON.stringify(items));
     } catch (error) {
-      Alert.alert('Hata', error.message);
+      console.log('Checklist save error:', error);
     }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator color="#FF6B35" size="large" /></View>;
+  const toggleChecklistItem = (id) => {
+    const updated = checklistItems_state.map(item =>
+      item.id === id ? { ...item, checked: !item.checked } : item
+    );
+    setChecklistItemsState(updated);
+    saveChecklist(updated);
+  };
 
-  return (
-    <FlatList
-      data={users}
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.detail}>{item.email || item.phone}</Text>
+  const getChecklistStatus = () => {
+    const checkedCount = checklistItems_state.filter(item => item.checked).length;
+    const totalCount = checklistItems_state.length;
+    const uncheckedCount = totalCount - checkedCount;
+
+    if (uncheckedCount === 0) {
+      return { text: '✓', color: '#10B981' };
+    } else if (uncheckedCount <= 8) {
+      return { text: `${uncheckedCount} eksik`, color: '#F59E0B' };
+    } else {
+      return { text: 'Hazırla', color: '#6366F1' };
+    }
+  };
+
+  const checklistStatus = getChecklistStatus();
+
+  const beforeEarthquake = [
+    {
+      title: '🏠 Evde Güvenli Yerler Belirle',
+      description: 'Ev içinde güvenli bölgeler tespit et: Masanın altı, iç duvarlar, asansör boşluğu dış kapı çerçeveleri.',
+    },
+    {
+      title: '📋 Acil Durum Planı Oluştur',
+      description: 'Aileden herkesin bilmesi gereken yer, telefon numarası ve birleşme noktasını belirle.',
+    },
+    {
+      title: '🎒 Acil Çanta Hazırla',
+      description: 'Su, gıda, birinci yardım malzemeleri, ilaç, kimlik belgeleri ve çakmak/fener ekle.',
+    },
+    {
+      title: '🔧 Kullanıcılara Eğitim Ver',
+      description: 'Ailenle deprem sırasında yapılması gereken hareket kurallarını pratik yap.',
+    },
+    {
+      title: '📞 İletişim Planı Yap',
+      description: 'Çevredeki ve uzaktaki acil kişilerin numaralarını herkese öğret. SafeQuake uygulamasında kontakları ekle.',
+    },
+    {
+      title: '🏗️ Evinizi Kontrol Et',
+      description: 'Ağır mobilyaları duvara sabitle. Kütüphaneler, raflar asılı nesneleri güvence altına al.',
+    },
+    {
+      title: '💧 Temel Malzeme Stoku',
+      description: 'Tornavidalar, kesici aletler, flashlightlar, ağır eldivenleri erişilebilir yerde bulundur.',
+    },
+  ];
+
+  const duringEarthquake = [
+    {
+      title: '⚡ İlk Saniyede Hızlı Hareket Et',
+      description: 'Deprem hisseden ilk saniyede masanın altına gir, ağır şeylerin altında kalmaktan kaçın.',
+    },
+    {
+      title: '🤐 Güvenli Pozisyon Al (Drop-Cover-Hold)',
+      description: 'Düş → Kapan (el ve kulakları koru) → Tut (sarsılmaya direniş göster) pozisyonunu uygula.',
+    },
+    {
+      title: '🧱 İç Duvarların Yanında Kal',
+      description: 'Pencerelerin, aynalarının, asılı nesnelerin ve kapıların yanından uzak dur.',
+    },
+    {
+      title: '🚪 Dışarıdaysan Açık Alan Bul',
+      description: 'Bina, ağaç veya tellerin uzağında açık bir alana git. Tuğla/cam kayması riskinden kaçın.',
+    },
+    {
+      title: '🚗 Araçta İsen Dur',
+      description: 'Güvenli şekilde araçı yolun kenarına çek, cıvata emniyetine otur, sarslama bitene kadar bekle.',
+    },
+    {
+      title: '🏛️ Asansörde İsen Buton Kullan',
+      description: 'Tüm katları ayarla ve kapılar açılınca çık. Kapalı kalırsan sessiz kal ve yardım çağır.',
+    },
+    {
+      title: '🤐 Sessiz Kal, Telefon Etme',
+      description: 'Kurtarma ekiplerinin muhabere kanallarını boş tutmaması için gereksiz aramaları yapmayın.',
+    },
+  ];
+
+  const afterEarthquake = [
+    {
+      title: '🚨 Yaralanmaları Kontrol Et',
+      description: 'Çevrenin ve kişinin durumunu kontrol et. Yaralılara basit ilk yardımı uygula.',
+    },
+    {
+      title: '🏠 Evin Hasar Durumunu Kontrol Et',
+      description: 'Çatlamalar, gaz sızıntıları, elektrik hasarlarını dikkatli incele. Şüpheli durumda çık.',
+    },
+    {
+      title: '💨 Gaz Tesisatını Kontrol Et',
+      description: 'Gaz kokusu varsa havalandırma açıp çık. Gaz musluğunu veya sayacı kapatmayı dene.',
+    },
+    {
+      title: '⚡ Elektrik Kablolarına Dikkat',
+      description: 'Açık kablolara, hasarlı aletlere dokunma. Şüpheli durumda elektrik kesicisini aç.',
+    },
+    {
+      title: '🚗 Göçük Alanlardan Uzak Dur',
+      description: 'Bina çöküntüsü olabilir. Tehlikeli yapılardan uzak dur ve kurtarma ekiplerine yer ver.',
+    },
+    {
+      title: '📱 Bildirim Gönder',
+      description: 'SafeQuake uygulamasında "Güvendeyim" bildirimini gönder ve sevdikleri endişeyi azalt.',
+    },
+    {
+      title: '📻 Resmi Bilgi Dinle',
+      description: 'Yerel radyo, TV veya resmi siren uyarılarını takip et. Söylentilere inanma.',
+    },
+    {
+      title: '🏥 Yaraları Kontrol Et ve Tedavi Gör',
+      description: 'Daha sonra ciddi yaraları hastanede kontrol ettir. Psikolojik destek de hayati olabilir.',
+    },
+  ];
+
+  const GuideSection = ({ title, tips }) => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {tips.map((tip, idx) => (
+        <View key={idx} style={styles.tipContainer}>
+          <View style={styles.tip}>
+            <Text style={styles.tipTitle}>{tip.title}</Text>
+            <Text style={styles.tipDescription}>{tip.description}</Text>
           </View>
-          <TouchableOpacity
-            style={[styles.btn, sentRequests.includes(item.id) && styles.btnDisabled]}
-            onPress={() => handleSendRequest(item.id)}
-            disabled={sentRequests.includes(item.id)}
-          >
-            <Text style={styles.btnText}>{sentRequests.includes(item.id) ? '✔' : '+'}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      keyExtractor={i => i.id.toString()}
-      contentContainerStyle={styles.list}
-    />
-  );
-};
-
-const RequestsTab = ({ token }) => {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchRequests();
-  }, [token]);
-
-  const fetchRequests = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/friend-requests/pending`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        setRequests(await response.json());
-      }
-    } catch (error) {
-      Alert.alert('Hata', error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResponse = async (id, status) => {
-    try {
-      await fetch(`${API_BASE_URL}/friend-requests/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ status }),
-      });
-      Alert.alert('Başarılı', status === 'accepted' ? 'Kabul edildi' : 'Reddedildi');
-      fetchRequests();
-    } catch (error) {
-      Alert.alert('Hata', error.message);
-    }
-  };
-
-  if (loading) return <View style={styles.center}><ActivityIndicator color="#FF6B35" size="large" /></View>;
-
-  return (
-    <FlatList
-      data={requests}
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{item.sender_name}</Text>
-            <Text style={styles.detail}>{item.sender_email || item.sender_phone}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={[styles.btn, { backgroundColor: '#D1FAE5' }]} onPress={() => handleResponse(item.id, 'accepted')}>
-              <Text style={styles.btnText}>✓</Text>
+          {/* Acil Çanta Hazırla için checklist butonu */}
+          {idx === 2 && activeTab === 'before' && (
+            <TouchableOpacity
+              style={[styles.checklistButton, { backgroundColor: checklistStatus.color }]}
+              onPress={() => setChecklistVisible(true)}
+            >
+              <Text style={styles.checklistButtonText}>{checklistStatus.text}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, { backgroundColor: '#FEE2E2' }]} onPress={() => handleResponse(item.id, 'rejected')}>
-              <Text style={styles.btnText}>✕</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
-      )}
-      keyExtractor={i => i.id.toString()}
-      contentContainerStyle={styles.list}
-    />
+      ))}
+    </View>
   );
-};
-
-export const GuideScreen = ({ token }) => {
-  const [tab, setTab] = useState('users');
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabs}>
-        <TouchableOpacity style={[styles.tab, tab === 'users' && styles.tabActive]} onPress={() => setTab('users')}>
-          <Text style={[styles.tabText, tab === 'users' && styles.tabTextActive]}>Kullanıcılar</Text>
+      {/* Tab Buttons */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'before' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('before')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'before' && styles.tabButtonTextActive]}>
+            Deprem Öncesi
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, tab === 'requests' && styles.tabActive]} onPress={() => setTab('requests')}>
-          <Text style={[styles.tabText, tab === 'requests' && styles.tabTextActive]}>İstekler</Text>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'during' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('during')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'during' && styles.tabButtonTextActive]}>
+            Deprem Sırası
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'after' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('after')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'after' && styles.tabButtonTextActive]}>
+            Deprem Sonrası
+          </Text>
         </TouchableOpacity>
       </View>
-      {tab === 'users' ? <UsersListTab token={token} /> : <RequestsTab token={token} />}
+
+      {/* Content */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {activeTab === 'before' && (
+          <GuideSection
+            title="📋 Deprem Öncesinde Hazırlanma"
+            tips={beforeEarthquake}
+          />
+        )}
+        {activeTab === 'during' && (
+          <GuideSection
+            title="⚡ Deprem Sırasında Yapılması Gerekenler"
+            tips={duringEarthquake}
+          />
+        )}
+        {activeTab === 'after' && (
+          <GuideSection
+            title="🆘 Deprem Sonrasında Yapılması Gerekenler"
+            tips={afterEarthquake}
+          />
+        )}
+      </ScrollView>
+
+      {/* Checklist Modal */}
+      <Modal
+        visible={checklistVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setChecklistVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🎒 Acil Çanta Kontrol Listesi</Text>
+              <TouchableOpacity onPress={() => setChecklistVisible(false)}>
+                <Text style={styles.closeButton}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={checklistItems_state}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.checklistItem, item.checked && styles.checklistItemChecked]}
+                  onPress={() => toggleChecklistItem(item.id)}
+                >
+                  <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
+                    {item.checked && <Text style={styles.checkboxTick}>✓</Text>}
+                  </View>
+                  <Text style={[styles.checklistItemLabel, item.checked && styles.checklistItemLabelChecked]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              keyExtractor={item => item.id.toString()}
+              contentContainerStyle={styles.checklistList}
+            />
+
+            <View style={styles.modalFooter}>
+              <View style={styles.progressInfo}>
+                <Text style={styles.progressText}>
+                  {checklistItems_state.filter(i => i.checked).length}/{checklistItems_state.length} Tamamlandı
+                </Text>
+                <View style={styles.progressBar}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${(checklistItems_state.filter(i => i.checked).length / checklistItems_state.length) * 100}%`,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FF' },
-  tabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  tab: { flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: '#FF6B35' },
-  tabText: { fontSize: 14, fontWeight: '600', color: '#9CA3AF' },
-  tabTextActive: { color: '#FF6B35' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { paddingHorizontal: 12, paddingVertical: 12 },
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' },
-  name: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 4 },
-  detail: { fontSize: 14, color: '#6B7280' },
-  btn: { backgroundColor: '#FF6B35', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  btnDisabled: { backgroundColor: '#D1D5DB' },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F9FF',
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingHorizontal: 8,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
+  },
+  tabButtonActive: {
+    borderBottomColor: '#EF4444',
+  },
+  tabButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  tabButtonTextActive: {
+    color: '#EF4444',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  section: {
+    paddingVertical: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+    paddingTop: 8,
+  },
+  tipContainer: {
+    marginBottom: 12,
+  },
+  tip: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  tipTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 6,
+  },
+  tipDescription: {
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 20,
+  },
+  checklistButton: {
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  checklistButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    flex: 1,
+    backgroundColor: '#fff',
+    marginTop: 50,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  closeButton: {
+    fontSize: 24,
+    color: '#6B7280',
+  },
+  checklistList: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  checklistItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  checklistItemChecked: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#10B981',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
+  },
+  checkboxTick: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  checklistItemLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  checklistItemLabelChecked: {
+    color: '#6B7280',
+    textDecorationLine: 'line-through',
+  },
+  modalFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  progressInfo: {
+    gap: 8,
+  },
+  progressText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 3,
+  },
 });

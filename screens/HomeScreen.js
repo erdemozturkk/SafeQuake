@@ -393,12 +393,12 @@ export const HomeScreen = ({ token, onNavigate }) => {
       </TouchableOpacity>
 
       {/* Network Status */}
-      <View style={styles.networkCard}>
+      {/* <View style={styles.networkCard}>
         <View style={styles.networkStatus}>
           <Text style={styles.networkLabel}>Ağ Bağlantısı Aktif</Text>
           <Text style={styles.networkDevices}>7 cihaz yakında bağlı</Text>
         </View>
-      </View>
+      </View> */}
 
       {/* Stats Row */}
       <View style={styles.statsRow}>
