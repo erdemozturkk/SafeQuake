@@ -85,7 +85,7 @@ export const GuideScreen = () => {
   const beforeEarthquake = [
     {
       title: '🏠 Evde Güvenli Yerler Belirle',
-      description: 'Ev içinde güvenli bölgeler tespit et: Masanın altı, iç duvarlar, asansör boşluğu dış kapı çerçeveleri.',
+      description: 'Ev içinde güvenli bölgeler tespit et: Masanın altı, iç duvarlar, asansör boşluğu, dış kapı çerçeveleri.',
     },
     {
       title: '📋 Acil Durum Planı Oluştur',
@@ -109,22 +109,22 @@ export const GuideScreen = () => {
     },
     {
       title: '💧 Temel Malzeme Stoku',
-      description: 'Tornavidalar, kesici aletler, flashlightlar, ağır eldivenleri erişilebilir yerde bulundur.',
+      description: 'Tornavidalar, kesici aletler, el fenerleri, ağır eldivenleri erişilebilir yerde bulundur.',
     },
   ];
 
   const duringEarthquake = [
     {
       title: '⚡ İlk Saniyede Hızlı Hareket Et',
-      description: 'Deprem hisseden ilk saniyede masanın altına gir, ağır şeylerin altında kalmaktan kaçın.',
+      description: 'Depremi hissettiğin ilk saniyelerde hemen harekete geç, ağır eşyaların etrafından uzaklaşın.',
     },
     {
       title: '🤐 Güvenli Pozisyon Al (Drop-Cover-Hold)',
-      description: 'Düş → Kapan (el ve kulakları koru) → Tut (sarsılmaya direniş göster) pozisyonunu uygula.',
+      description: 'Düş → Kapan (ellerinle baş çevresini koru) → Tut (sarsılmaya direniş göster) pozisyonunu uygula.',
     },
     {
       title: '🧱 İç Duvarların Yanında Kal',
-      description: 'Pencerelerin, aynalarının, asılı nesnelerin ve kapıların yanından uzak dur.',
+      description: 'Pencerelerin, aynaların, asılı nesnelerin ve kapıların yanından uzak dur.',
     },
     {
       title: '🚪 Dışarıdaysan Açık Alan Bul',
@@ -136,18 +136,18 @@ export const GuideScreen = () => {
     },
     {
       title: '🏛️ Asansörde İsen Buton Kullan',
-      description: 'Tüm katları ayarla ve kapılar açılınca çık. Kapalı kalırsan sessiz kal ve yardım çağır.',
+      description: 'Tüm katların düğmesine basmaya çalış (bu sayede asansör en yakın katta duracaktır) ve kapılar açılınca çık. Kapalı kalırsan sessiz kal ve yardım çağır.',
     },
     {
       title: '🤐 Sessiz Kal, Telefon Etme',
-      description: 'Kurtarma ekiplerinin muhabere kanallarını boş tutmaması için gereksiz aramaları yapmayın.',
+      description: 'Kurtarma ekiplerinin iletişim  kanallarını etkili kullanabilmesi için gereksiz aramalar yapmayın.',
     },
   ];
 
   const afterEarthquake = [
     {
       title: '🚨 Yaralanmaları Kontrol Et',
-      description: 'Çevrenin ve kişinin durumunu kontrol et. Yaralılara basit ilk yardımı uygula.',
+      description: 'Çevrenin ve etrafındaki kişilerin durumunu kontrol et. Yaralılara basit ilk yardımı uygula.',
     },
     {
       title: '🏠 Evin Hasar Durumunu Kontrol Et',
@@ -159,7 +159,7 @@ export const GuideScreen = () => {
     },
     {
       title: '⚡ Elektrik Kablolarına Dikkat',
-      description: 'Açık kablolara, hasarlı aletlere dokunma. Şüpheli durumda elektrik kesicisini aç.',
+      description: 'Açık kablolara, hasarlı aletlere dokunma. Şüpheli durumda elektrik sigortasını kapat.',
     },
     {
       title: '🚗 Göçük Alanlardan Uzak Dur',
