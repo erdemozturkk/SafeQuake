@@ -92,7 +92,7 @@ export const GuideScreen = () => {
       description: 'Aileden herkesin bilmesi gereken yer, telefon numarası ve birleşme noktasını belirle.',
     },
     {
-      title: '🎒 Acil Çanta Hazırla',
+      title: '🎒 Acil Durum Çantası Hazırla',
       description: 'Su, gıda, birinci yardım malzemeleri, ilaç, kimlik belgeleri ve çakmak/fener ekle.',
     },
     {
