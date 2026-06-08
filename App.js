@@ -9,6 +9,7 @@ import { MapScreen } from './screens/MapScreen';
 import { AlertsScreen } from './screens/AlertsScreen';
 import { ContactsScreen } from './screens/ContactsScreen';
 import { GuideScreen } from './screens/GuideScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
 import LoginScreen from './screens/LoginScreen';
 import SignUpScreen from './screens/SignUpScreen';
 
@@ -195,11 +196,13 @@ export default function App() {
       case 'Map':
         return <MapScreen token={token} route={{ params: mapParams }} contactIdForLocation={selectedContactId} contactNameForLocation={selectedContactName} onBackFromContactLocation={() => { setSelectedContactId(null); setSelectedContactName(null); setActiveTab('Contacts'); }} />;
       case 'Alerts':
-        return <AlertsScreen token={token} />;
+        return <AlertsScreen token={token} onNavigate={handleNavigate} />;
       case 'Contacts':
         return <ContactsScreen token={token} onShowContactLocation={(contactId, contactName) => { setSelectedContactId(contactId); setSelectedContactName(contactName); setActiveTab('Map'); }} />;
       case 'Guide':
         return <GuideScreen token={token} />;
+      case 'Settings':
+        return <SettingsScreen token={token} onLogout={handleLogout} />;
       default:
         return <HomeScreen onNavigate={handleNavigate} token={token} />;
     }
@@ -218,6 +221,7 @@ export default function App() {
     { name: 'Alerts', icon: '🔔', label: 'Alerts' },
     { name: 'Contacts', icon: '👤', label: 'Contacts' },
     { name: 'Guide', icon: '📖', label: 'Guide' },
+    { name: 'Settings', icon: '⚙️', label: 'Settings' },
   ];
 
   if (loading) {

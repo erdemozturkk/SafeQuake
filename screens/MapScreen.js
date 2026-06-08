@@ -13,13 +13,19 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
   const [htmlContent, setHtmlContent] = useState('');
   const [contactLocations, setContactLocations] = useState({ myLocation: null, contactLocation: null });
 
-  // Route'tan showOSM parametresini al
+  // Route'tan parametreleri al
   const showOSM = route?.params?.showOSM ?? false;
+  const focusedEarthquake = route?.params?.focusedEarthquake ?? null;
 
   const getTimeAgo = (dateString) => {
     try {
+      if (!dateString) return 'Bilinmiyor';
+      let sanitizedTime = String(dateString).replace(/\./g, '-').replace(' ', 'T');
+      const date = new Date(sanitizedTime);
+      if (isNaN(date.getTime())) {
+        return 'Bilinmiyor';
+      }
       const now = new Date();
-      const date = new Date(dateString);
       const seconds = Math.floor((now - date) / 1000);
       
       if (seconds < 60) return 'Az önce';
@@ -204,14 +210,28 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
   const generateMapHTML = (data) => {
     const recentEarthquakes = data.slice(0, 20);
     
+    let initialLat = 39.2;
+    let initialLng = 35.2;
+    let initialZoom = 6;
+    let focusedEarthquakeScript = '';
+
+    if (focusedEarthquake) {
+      initialLat = parseFloat(focusedEarthquake.latitude);
+      initialLng = parseFloat(focusedEarthquake.longitude);
+      initialZoom = 10;
+    }
+
     const markers = recentEarthquakes
       .map((eq) => {
         const lat = parseFloat(eq.latitude);
         const lng = parseFloat(eq.longitude);
         const color = getMagnitudeColor(parseFloat(eq.magnitude));
         
-        return `
-          L.circleMarker([${lat}, ${lng}], {
+        const isFocused = focusedEarthquake && String(eq.id) === String(focusedEarthquake.id);
+        const markerVar = `marker_${String(eq.id).replace(/[^a-zA-Z0-9]/g, '_')}`;
+        
+        let markerCode = `
+          const ${markerVar} = L.circleMarker([${lat}, ${lng}], {
             radius: ${Math.max(5, parseFloat(eq.magnitude) * 2)},
             fillColor: '${color}',
             color: '#666',
@@ -220,6 +240,12 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
             fillOpacity: 0.7
           }).bindPopup('<b>${eq.magnitude}</b><br>${eq.location}<br>${eq.datetime}').addTo(map);
         `;
+        
+        if (isFocused) {
+           focusedEarthquakeScript = `setTimeout(() => { ${markerVar}.openPopup(); }, 500);`;
+        }
+
+        return markerCode;
       })
       .join('\n');
 
@@ -248,13 +274,14 @@ export const MapScreen = ({ token, contactIdForLocation, contactNameForLocation,
       <body>
         <div id="map"></div>
         <script>
-          const map = L.map('map').setView([39.2, 35.2], 6);
+          const map = L.map('map').setView([${initialLat}, ${initialLng}], ${initialZoom});
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 19
           }).addTo(map);
           
           ${markers}
+          ${focusedEarthquakeScript}
           
           const legend = L.control({ position: 'bottomright' });
           legend.onAdd = function (map) {

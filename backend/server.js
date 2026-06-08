@@ -9,6 +9,8 @@ const friendRequestsRoutes = require('./routes/friend-requests');
 const locationsRoutes = require('./routes/locations');
 const notificationsRoutes = require('./routes/notifications');
 const earthquakesRoutes = require('./routes/earthquakes');
+const settingsRoutes = require('./routes/settings');
+const statusRoutes = require('./routes/status');
 
 const app = express();
 
@@ -23,6 +25,8 @@ app.use('/api/friend-requests', friendRequestsRoutes);
 app.use('/api/locations', locationsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/earthquakes', earthquakesRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/status', statusRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

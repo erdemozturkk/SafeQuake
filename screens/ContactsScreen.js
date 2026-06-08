@@ -349,7 +349,7 @@ export const ContactsScreen = ({ token, onShowContactLocation }) => {
           style={[styles.tabButton, activeTab === 'contacts' && styles.tabButtonActive]} 
           onPress={() => setActiveTab('contacts')}
         >
-          <Text style={[styles.tabButtonText, activeTab === 'contacts' && styles.tabButtonTextActive]}>İletişi Kişileri</Text>
+          <Text style={[styles.tabButtonText, activeTab === 'contacts' && styles.tabButtonTextActive]}>İletişim Kişileri</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.tabButton, activeTab === 'requests' && styles.tabButtonActive]} 

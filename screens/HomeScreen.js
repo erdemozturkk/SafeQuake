@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import * as Network from 'expo-network';
 import * as SMS from 'expo-sms';
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { earthquakeService } from '../services/earthquakeService';
 import { osmService } from '../services/osmService';
@@ -17,6 +18,7 @@ export const HomeScreen = ({ token, onNavigate }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [reportingStatus, setReportingStatus] = useState(null);
 
   useEffect(() => {
     fetchEarthquakeData();
@@ -89,7 +91,15 @@ export const HomeScreen = ({ token, onNavigate }) => {
 
   const getTimeAgo = (timeString) => {
     try {
-      const date = new Date(timeString);
+      if (!timeString) return '';
+      let date = new Date(timeString);
+      if (isNaN(date.getTime())) {
+        let sanitizedTime = String(timeString).replace(/\./g, '-').replace(' ', 'T');
+        date = new Date(sanitizedTime);
+      }
+      if (isNaN(date.getTime())) {
+        return String(timeString);
+      }
       const now = new Date();
       const diffMs = now - date;
       const diffMins = Math.floor(diffMs / 60000);
@@ -191,7 +201,7 @@ export const HomeScreen = ({ token, onNavigate }) => {
     }
   };
 
-  const handleSendSafeViaSMS = async () => {
+  const handleSendSafeViaSMS = async (statusType = 'safe', location = null) => {
     try {
       // Önce network state kontrol et
       const networkState = await Network.getNetworkStateAsync();
@@ -265,7 +275,14 @@ export const HomeScreen = ({ token, onNavigate }) => {
       }
 
       // SMS gönder
-      const message = 'Ben güvendeyim, merak etmeyin. (SafeQuake - Otomatik bildirim)';
+      let messageText = 'Ben güvendeyim, merak etmeyin.';
+      if (statusType === 'injured') messageText = 'Yaralandım, yardıma ihtiyacım var!';
+      if (statusType === 'trapped') messageText = 'Enkaz altında sıkıştım, acil yardım gönderin!';
+
+      let message = `${messageText} (SafeQuake - Otomatik bildirim)`;
+      if (location) {
+        message += `\nKonum: https://maps.google.com/?q=${location.coords.latitude},${location.coords.longitude}`;
+      }
       
       console.log('📤 Sending SMS...');
       await SMS.sendSMSAsync(
@@ -325,6 +342,103 @@ export const HomeScreen = ({ token, onNavigate }) => {
     onNavigate('Map', { showOSM: true });
   };
 
+  const handleReportStatus = async (statusType) => {
+    if (!token) {
+      Alert.alert('Hata', 'Lütfen önce giriş yapınız');
+      return;
+    }
+
+    setReportingStatus(statusType);
+    try {
+      const networkState = await Network.getNetworkStateAsync();
+      const isConnected = networkState.isConnected && networkState.isInternetReachable;
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Hata', 'Konum izni gerekli');
+        setReportingStatus(null);
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      if (isConnected) {
+        const response = await fetch(`${API_BASE_URL}/status/report`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            latitude: currentLocation.coords.latitude,
+            longitude: currentLocation.coords.longitude,
+            status: statusType,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          const statusMessages = {
+            safe: '✅ Güvende olduğunuz bildirildi',
+            injured: '⚠️ Yaralandığınız bildirildi',
+            trapped: '🆘 Sıkışmış olduğunuz bildirildi',
+          };
+
+          Alert.alert(
+            'Başarılı',
+            `${statusMessages[statusType]}\n${data.notified_contacts} kontağa haber verildi`,
+            [{ text: 'Tamam' }]
+          );
+
+          fetchNotifications();
+        } else {
+          Alert.alert('Hata', data.error || 'Durum raporu gönderilemedi');
+        }
+      } else {
+        // İnternet yok - SMS'e yönlendir
+        Alert.alert(
+          'İnternet Bağlantısı Yok',
+          'Bildirim SMS olarak gönderilecek. Devam etmek istiyor musunuz?',
+          [
+            {
+              text: 'İptal',
+              style: 'cancel',
+            },
+            {
+              text: 'Gönder',
+              onPress: async () => {
+                await handleSendSafeViaSMS(statusType, currentLocation);
+              },
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      if (error.message === 'Network request failed' || error.name === 'TypeError') {
+        Alert.alert(
+          'Bağlantı Hatası',
+          'İnternet bağlantınız koptu. Bildirim SMS olarak gönderilecek. Devam etmek istiyor musunuz?',
+          [
+            { text: 'İptal', style: 'cancel' },
+            {
+              text: 'Gönder',
+              onPress: async () => {
+                await handleSendSafeViaSMS(statusType);
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Hata', error.message);
+      }
+    } finally {
+      setReportingStatus(null);
+    }
+  };
+
   return (
     <>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -373,24 +487,56 @@ export const HomeScreen = ({ token, onNavigate }) => {
         )}
       </View>
 
-      {/* I Am Safe Button */}
-      <TouchableOpacity 
-        style={[styles.safeButton, sendingSafeNotif && { opacity: 0.6 }]}
-        onPress={handleSendSafeNotification}
-        disabled={sendingSafeNotif}
-      >
-        {sendingSafeNotif ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <>
-            <Text style={styles.safeButtonIcon}>✓</Text>
-            <View style={styles.safeButtonText}>
-              <Text style={styles.safeTitle}>Güvendeyim</Text>
-              <Text style={styles.safeSubtitle}>Acil durum kişileriyle durumunuzu paylaşın</Text>
-            </View>
-          </>
-        )}
-      </TouchableOpacity>
+      {/* Status Buttons Row */}
+      <View style={styles.statusButtonsContainer}>
+        {/* Safe Button */}
+        <TouchableOpacity 
+          style={[styles.statusButton, styles.safeStatusButton, reportingStatus === 'safe' && styles.statusButtonActive]}
+          onPress={() => handleReportStatus('safe')}
+          disabled={reportingStatus !== null}
+        >
+          {reportingStatus === 'safe' ? (
+            <ActivityIndicator color="#10B981" size="small" />
+          ) : (
+            <>
+              <Text style={styles.statusIcon}>🟢</Text>
+              <Text style={styles.statusLabel}>Güvendeyim</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Injured Button */}
+        <TouchableOpacity 
+          style={[styles.statusButton, styles.injuredStatusButton, reportingStatus === 'injured' && styles.statusButtonActive]}
+          onPress={() => handleReportStatus('injured')}
+          disabled={reportingStatus !== null}
+        >
+          {reportingStatus === 'injured' ? (
+            <ActivityIndicator color="#F59E0B" size="small" />
+          ) : (
+            <>
+              <Text style={styles.statusIcon}>🟡</Text>
+              <Text style={styles.statusLabel}>Yaralandım</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Trapped Button */}
+        <TouchableOpacity 
+          style={[styles.statusButton, styles.trappedStatusButton, reportingStatus === 'trapped' && styles.statusButtonActive]}
+          onPress={() => handleReportStatus('trapped')}
+          disabled={reportingStatus !== null}
+        >
+          {reportingStatus === 'trapped' ? (
+            <ActivityIndicator color="#EF4444" size="small" />
+          ) : (
+            <>
+              <Text style={styles.statusIcon}>🔴</Text>
+              <Text style={styles.statusLabel}>Sıkıştım</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
 
       {/* Network Status */}
       {/* <View style={styles.networkCard}>
@@ -604,32 +750,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
   },
-  safeButton: {
-    backgroundColor: '#10B981',
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  safeButtonIcon: {
-    fontSize: 28,
-    color: '#fff',
-    marginRight: 12,
-  },
-  safeButtonText: {
-    flex: 1,
-  },
-  safeTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  safeSubtitle: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 2,
-  },
+
   networkCard: {
     backgroundColor: '#F3F4F6',
     borderRadius: 12,
@@ -690,6 +811,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  statusButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  statusButton: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
   },
   modalOverlay: {
     flex: 1,
@@ -800,5 +935,29 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  safeStatusButton: {
+    backgroundColor: '#D1FAE5',
+    borderColor: '#10B981',
+  },
+  injuredStatusButton: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  trappedStatusButton: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#EF4444',
+  },
+  statusButtonActive: {
+    opacity: 0.7,
+  },
+  statusIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  statusLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
   },
 });

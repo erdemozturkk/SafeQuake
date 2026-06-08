@@ -1,8 +1,6 @@
-const axios = require('axios');
 const { getPool } = require('../config/database');
 const sql = require('mssql');
-
-const KANDILLI_API = 'https://api.orhanaydogdu.com.tr/deprem/kandilli/live';
+const earthquakeDataService = require('./earthquakeDataService');
 const MIN_MAGNITUDE = 3.0;
 
 // Haversine formula: 100km içindeyse true
@@ -22,11 +20,10 @@ const isWithin100km = (lat1, lon1, lat2, lon2) => {
 // Check and save earthquakes
 const checkAndSaveEarthquakes = async () => {
   try {
-    console.log('🔍 Checking earthquakes from Kandilli API...');
+    console.log('🔍 Checking earthquakes (Kandilli XML + AFAD)...');
     
-    // Fetch from Kandilli API
-    const response = await axios.get(KANDILLI_API, { timeout: 10000 });
-    const earthquakes = response.data?.result || [];
+    // Fetch from our own earthquake data service
+    const earthquakes = await earthquakeDataService.getLiveEarthquakes();
 
     if (earthquakes.length === 0) {
       console.log('ℹ️  No earthquakes found');

@@ -3,7 +3,35 @@ const { getPool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const sql = require('mssql');
 
+const earthquakeDataService = require('../services/earthquakeDataService');
+
 const router = express.Router();
+
+// GET live earthquake data (Kandilli XML + AFAD API)
+router.get('/live', async (req, res) => {
+  try {
+    const earthquakes = await earthquakeDataService.getLiveEarthquakes();
+    
+    res.json({
+      status: true,
+      httpStatus: 200,
+      desc: '',
+      result: earthquakes,
+      metadata: {
+        total: earthquakes.length,
+        date: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('Live earthquakes error:', err);
+    res.status(500).json({
+      status: false,
+      httpStatus: 500,
+      desc: err.message,
+      result: [],
+    });
+  }
+});
 
 // Haversine formula: 100km içindeyse true
 const isWithin100km = (lat1, lon1, lat2, lon2) => {

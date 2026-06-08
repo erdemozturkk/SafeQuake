@@ -1,8 +1,8 @@
-import { StyleSheet, Text, View, ScrollView, ActivityIndicator, FlatList } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, ActivityIndicator, FlatList, TouchableOpacity } from 'react-native';
 import { useEffect, useState } from 'react';
 import { earthquakeService } from '../services/earthquakeService';
 
-export const AlertsScreen = () => {
+export const AlertsScreen = ({ onNavigate }) => {
   const [earthquakes, setEarthquakes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -29,7 +29,15 @@ export const AlertsScreen = () => {
 
   const getTimeAgo = (timeString) => {
     try {
-      const date = new Date(timeString);
+      if (!timeString) return '';
+      let date = new Date(timeString);
+      if (isNaN(date.getTime())) {
+        let sanitizedTime = String(timeString).replace(/\./g, '-').replace(' ', 'T');
+        date = new Date(sanitizedTime);
+      }
+      if (isNaN(date.getTime())) {
+        return String(timeString);
+      }
       const now = new Date();
       const diffMs = now - date;
       const diffMins = Math.floor(diffMs / 60000);
@@ -65,8 +73,16 @@ export const AlertsScreen = () => {
           <Text style={styles.timeText}>{getTimeAgo(item.time)}</Text>
         </View>
         <View style={styles.coordinatesRow}>
-          <Text style={styles.coordinateText}>Lat: {item.latitude.toFixed(3)}</Text>
-          <Text style={styles.coordinateText}>Lon: {item.longitude.toFixed(3)}</Text>
+          <View>
+            <Text style={styles.coordinateText}>Lat: {item.latitude.toFixed(3)}</Text>
+            <Text style={styles.coordinateText}>Lon: {item.longitude.toFixed(3)}</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.mapButton}
+            onPress={() => onNavigate && onNavigate('Map', { focusedEarthquake: item })}
+          >
+            <Text style={styles.mapButtonText}>🗺️ Haritada Göster</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -239,5 +255,17 @@ const styles = StyleSheet.create({
   coordinateText: {
     fontSize: 11,
     color: '#9CA3AF',
+  },
+  mapButton: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignSelf: 'flex-end',
+  },
+  mapButtonText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '600',
   },
 });
